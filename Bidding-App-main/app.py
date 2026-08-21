@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 import profiles
 import drafts
 import theme
+import pdf_export
 from doc_generator import BidDocumentGenerator
 from pdf_viewer import PDFViewerMixin
 from partner_docs import PartnerDocsMixin
@@ -79,6 +80,11 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._current_draft_id = None
         self.profile_save_btns = {}  # Tracks the save buttons for dynamic text
 
+        # State for the Preview -> Save -> Split review workflow
+        self._last_generated_docx = None
+        self._last_generated_pdf = None
+        self._last_partner_count = None
+
         self._build_shell()
 
         self.entries = {}
@@ -88,7 +94,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
 
         self._wire_shell()
         self._refresh_draft_selector()
-        self.change_appearance_mode_event("Light")
+        self.change_appearance_mode_event("Dark")
 
         QTimer.singleShot(100, lambda r="lead": self._refresh_partner_docs(r))
         QTimer.singleShot(100, lambda r="first": self._refresh_partner_docs(r))
@@ -117,6 +123,20 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
 
         self.top_bar = StickyTopBar()
         main_col_layout.addWidget(self.top_bar)
+
+        self.doc_actions_bar = QWidget()
+        doc_actions_layout = QHBoxLayout(self.doc_actions_bar)
+        doc_actions_layout.setContentsMargins(16, 8, 16, 0)
+        self.preview_btn = QPushButton("Preview Document")
+        self.save_btn = QPushButton("Save Reviewed Document")
+        self.save_btn.setEnabled(False)
+        self.split_btn = QPushButton("Split into Section PDFs (<1MB)")
+        self.split_btn.setEnabled(False)
+        doc_actions_layout.addWidget(self.preview_btn)
+        doc_actions_layout.addWidget(self.save_btn)
+        doc_actions_layout.addWidget(self.split_btn)
+        doc_actions_layout.addStretch(1)
+        main_col_layout.addWidget(self.doc_actions_bar)
 
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setChildrenCollapsible(False)
@@ -161,6 +181,10 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
 
         self.top_bar.generate_requested.connect(self.generate_doc)
         self.top_bar.clear_requested.connect(self.clear_fields)
+
+        self.preview_btn.clicked.connect(self.preview_doc)
+        self.save_btn.clicked.connect(self.save_generated_doc)
+        self.split_btn.clicked.connect(self.split_generated_doc)
 
         self.summary_panel.upload_btn.clicked.connect(self.upload_employer_pdf)
 
@@ -859,6 +883,13 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def _do_clear_fields(self):
         self._current_draft_id = None
 
+        self._last_generated_docx = None
+        self._last_generated_pdf = None
+        self._last_partner_count = None
+        if hasattr(self, "save_btn"):
+            self.save_btn.setEnabled(False)
+            self.split_btn.setEnabled(False)
+
         for entry in self.entries.values():
             entry.blockSignals(True)
             if isinstance(entry, QComboBox):
@@ -1133,6 +1164,115 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             errors.append("An authorised-person signature image is required.")
         return errors
 
+    def preview_doc(self):
+        """Generate the bid, convert it to PDF, and show it in the review
+        dialog before the user commits to saving or splitting it."""
+        data = {k: self._entry_value(v) for k, v in self.entries.items()}
+        validation_errors = self._validate_bid(data)
+        if validation_errors:
+            QMessageBox.warning(
+                self,
+                "Please correct the bid",
+                "Preview was stopped because of the following issues:\n\n- "
+                + "\n- ".join(validation_errors),
+            )
+            return
+
+        for pct_key in ("L_PER", "F_PER", "S_PER"):
+            if pct_key in data:
+                data[pct_key] = format_percentage(
+                    str(data[pct_key]).strip().replace("%", "")
+                )
+                if data[pct_key]:
+                    data[pct_key] += "%"
+
+        total_pct = self._update_percentage_total()
+        if abs(total_pct - 100.0) > 0.01:
+            QMessageBox.critical(
+                self, "Invalid Percentage Split",
+                "Partner percentage shares must add up to 100%.\n"
+                "Current total: {:.2f}%".format(total_pct),
+            )
+            return
+
+        second_partner_name = data.get("SECOND_PARTNER_NAME", "")
+        data["HAS_THIRD_PARTNER"] = "False" if self.generator.is_empty_value(second_partner_name) else "True"
+        data["AUTHORIZED_CAPACITY"] = "Authorised person of JV"
+
+        try:
+            docx_path = self.generator.generate(data, self.image_mapping)
+            pdf_path = self.generator.convert_to_pdf(docx_path)
+        except Exception as e:
+            QMessageBox.critical(self, "Preview Failed", str(e))
+            return
+
+        self._last_generated_docx = docx_path
+        self._last_generated_pdf = pdf_path
+        self._last_partner_count = self.generator.determine_partner_count(data)
+
+        self.save_btn.setEnabled(True)
+        self.split_btn.setEnabled(True)
+
+        self._preview_document(str(pdf_path))
+        logger.info(f"Previewed generated bid: {docx_path}")
+
+    def save_generated_doc(self):
+        """Let the user save a copy of the most recently previewed bid."""
+        if not self._last_generated_docx:
+            QMessageBox.information(self, "Nothing to Save", "Preview a document first.")
+            return
+        dest, _ = QFileDialog.getSaveFileName(
+            self, "Save Bid Document As", str(self._last_generated_docx),
+            "Word Document (*.docx)",
+        )
+        if not dest:
+            return
+        try:
+            shutil.copy2(self._last_generated_docx, dest)
+        except OSError as e:
+            QMessageBox.critical(self, "Save Failed", str(e))
+            return
+        QMessageBox.information(self, "Saved", f"Saved to:\n{dest}")
+        logger.info(f"Saved reviewed bid to {dest}")
+
+    def split_generated_doc(self):
+        """Split the most recently previewed PDF into per-section files,
+        each compressed to under 1MB and named after its section."""
+        if not self._last_generated_pdf:
+            QMessageBox.information(self, "Nothing to Split", "Preview a document first.")
+            return
+
+        out_dir = QFileDialog.getExistingDirectory(
+            self, "Choose folder for split section PDFs",
+            str(Path(self._last_generated_pdf).parent),
+        )
+        if not out_dir:
+            return
+
+        try:
+            written, warnings = pdf_export.split_and_compress(
+                self._last_generated_pdf, self._last_partner_count, out_dir,
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Split Failed", str(e))
+            return
+
+        msg = f"Wrote {len(written)} section PDFs to:\n{out_dir}"
+        if warnings:
+            msg += "\n\nWarnings:\n- " + "\n- ".join(warnings)
+        QMessageBox.information(self, "Split Complete", msg)
+        logger.info(f"Split bid into {len(written)} section PDFs in {out_dir}")
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(out_dir)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", out_dir])
+            else:
+                subprocess.Popen(["xdg-open", out_dir])
+        except Exception as e:
+            logger.error(f"Failed to open folder: {e}")
+
     def generate_doc(self):
         data = {k: self._entry_value(v) for k, v in self.entries.items()}
         validation_errors = self._validate_bid(data)
@@ -1200,6 +1340,14 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def change_appearance_mode_event(self, new_appearance_mode: str):
         app = QApplication.instance()
         app.setStyleSheet(theme.build_qss(new_appearance_mode))
+        # Elevation shadows are drawn via QGraphicsDropShadowEffect (QSS has
+        # no box-shadow), so their color has to be refreshed per mode too.
+        if hasattr(self, "sidebar"):
+            theme.apply_elevation(self.sidebar, blur=28, y_offset=0, mode=new_appearance_mode)
+        if hasattr(self, "top_bar"):
+            theme.apply_elevation(self.top_bar, blur=24, y_offset=4, mode=new_appearance_mode)
+        if hasattr(self, "summary_panel"):
+            theme.apply_elevation(self.summary_panel, blur=28, y_offset=0, mode=new_appearance_mode)
         if hasattr(self, "sidebar") and self.sidebar.theme_combo.currentText() != new_appearance_mode:
             self.sidebar.theme_combo.blockSignals(True)
             self.sidebar.theme_combo.setCurrentText(new_appearance_mode)
