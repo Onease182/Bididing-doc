@@ -6,6 +6,8 @@ table cleanup, and document generation. Pure document logic, no Tkinter.
 
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import logging
 from pathlib import Path
@@ -369,3 +371,36 @@ class BidDocumentGenerator:
             if temp_path.exists():
                 temp_path.unlink()
         return output_path
+
+    def convert_to_pdf(self, docx_path):
+        """Convert a generated .docx to .pdf for preview/splitting.
+
+        Tries docx2pdf first (uses Microsoft Word — works on Windows/Mac,
+        matches this app's existing environment). Falls back to LibreOffice
+        headless conversion if docx2pdf/Word isn't available.
+        """
+        docx_path = Path(docx_path)
+        pdf_path = docx_path.with_suffix(".pdf")
+
+        try:
+            from docx2pdf import convert as _docx2pdf_convert
+            _docx2pdf_convert(str(docx_path), str(pdf_path))
+            if pdf_path.exists():
+                return pdf_path
+        except Exception as e:
+            logger.warning(f"docx2pdf conversion failed, trying LibreOffice: {e}")
+
+        soffice = shutil.which("soffice") or shutil.which("libreoffice")
+        if soffice:
+            subprocess.run(
+                [soffice, "--headless", "--convert-to", "pdf",
+                 "--outdir", str(docx_path.parent), str(docx_path)],
+                check=True, timeout=120,
+            )
+            if pdf_path.exists():
+                return pdf_path
+
+        raise RuntimeError(
+            "Could not convert the document to PDF. Install Microsoft Word "
+            "(for docx2pdf) or LibreOffice, then try again."
+        )
