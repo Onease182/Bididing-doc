@@ -12,7 +12,7 @@ split into separate per-page files.
 import logging
 from pathlib import Path
 
-from pdf_utils import fitz, HAS_FITZ
+from pdf_utils import get_fitz, is_fitz_available
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,7 @@ def _compress_pages_under_limit(src_doc, start_page, page_count, max_bytes=MAX_S
     page_count), downsampling if needed to stay under max_bytes. Plain
     text pages are already tiny; this loop mainly protects sections
     carrying embedded signature/stamp images."""
+    fitz = get_fitz()
     end_page = start_page + page_count - 1
 
     # First attempt: a clean vector copy of the pages (smallest, sharpest).
@@ -109,9 +110,10 @@ def split_and_compress(pdf_path, partner_count, output_dir):
     'Extra Page N'; if it has fewer, a warning is returned so the caller
     can flag it for review.
     """
-    if not HAS_FITZ:
+    if not is_fitz_available():
         raise RuntimeError("PyMuPDF (fitz) is required to split PDFs.")
 
+    fitz = get_fitz()
     pdf_path = Path(pdf_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -125,12 +127,13 @@ def split_and_compress(pdf_path, partner_count, output_dir):
         page_count = len(doc)
 
         if page_count != expected_pages:
-            warnings.append(
+            message = (
                 f"Expected {expected_pages} pages for a {partner_count}-partner "
-                f"bid but the generated PDF has {page_count}. Some sections "
-                "may not line up correctly — please check the split output "
-                "before submitting."
+                f"bid but the generated PDF has {page_count}. Splitting will "
+                "continue in best-effort mode; please review the output."
             )
+            warnings.append(message)
+            logger.warning(message)
 
         cursor = 0
         file_index = 1

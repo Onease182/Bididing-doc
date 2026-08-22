@@ -33,6 +33,21 @@ APP_ROOT = Path(__file__).resolve().parent
 DB_PATH = APP_ROOT / "db" / "drafts.db"
 DRAFTS_DIR = APP_ROOT / "uploads" / "drafts"
 
+
+def _copy_if_different(source_path, destination_path):
+    """Copy a file unless source and destination resolve to the same path.
+
+    Returns ``True`` when a copy was performed and ``False`` when the copy was
+    skipped because it would be a self-copy.
+    """
+    source = Path(source_path)
+    destination = Path(destination_path)
+    if source.resolve() == destination.resolve():
+        return False
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return True
+
 def _connection():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
@@ -189,7 +204,7 @@ def _store_draft_images(draft_id, image_mapping):
             ext = ".png"
         # FIX BUG 3 & 5: Prefix with draft_id to prevent filename collisions
         dest = draft_dir / f"draft_{draft_id}_{img_key}{ext}"
-        shutil.copy2(src, dest)
+        _copy_if_different(src, dest)
         stored[img_key] = f"draft_{draft_id}_{img_key}{ext}"
     return stored
 

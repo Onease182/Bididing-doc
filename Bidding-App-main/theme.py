@@ -77,6 +77,14 @@ DARK = {
     "primary": ZINC[50], "primary_text": ZINC[900], "primary_hover": ZINC[200],
 }
 
+# Compatibility alias for older summary_panel.py revisions.
+OBSIDIAN = DARK
+
+
+def apply_elevation(widget, blur=20, y_offset=4, mode="Light"):
+    """No-op: drop shadows are disabled for faster startup."""
+    return None
+
 
 def palette(mode: str) -> dict:
     return DARK if mode == "Dark" else LIGHT
@@ -86,11 +94,15 @@ def palette(mode: str) -> dict:
 # QSS builder
 # ---------------------------------------------------------------------------
 
+_qss_cache = {}
+
 def build_qss(mode: str = "Light") -> str:
+    if mode in _qss_cache:
+        return _qss_cache[mode]
     p = palette(mode)
     r, sz, f = RADIUS, SIZE, FONT
 
-    return f"""
+    qss = f"""
     * {{ font-family: {f['ui']}; font-size: {f['size_base']}px; }}
 
     QMainWindow, QWidget {{
@@ -174,6 +186,20 @@ def build_qss(mode: str = "Light") -> str:
         border-radius: {r['md']}px;
     }}
 
+
+    /* ---------- Form cards ---------- */
+    QFrame#FormCard {{
+        background-color: {p['bg_surface']};
+        border: {sz['border']}px solid {p['border']};
+        border-radius: {r['lg']}px;
+    }}
+    QLabel#CardTitle {{
+        color: {p['text']}; font-size: 14px; font-weight: 700;
+    }}
+    QLabel#CardSubtitle {{
+        color: {p['text_muted']}; font-size: {f['size_sm']}px;
+    }}
+
     /* ---------- Scroll areas ---------- */
     QScrollArea {{ border: none; background: transparent; }}
     QScrollBar:vertical {{ background: transparent; width: 10px; }}
@@ -224,3 +250,5 @@ def build_qss(mode: str = "Light") -> str:
     QListWidget#CommandList::item {{ padding: 6px 10px; border-radius: {r['sm']}px; color: {p['text']}; }}
     QListWidget#CommandList::item:selected {{ background-color: {p['bg_selected']}; color: {STATUS['accent']}; }}
     """
+    _qss_cache[mode] = qss
+    return qss

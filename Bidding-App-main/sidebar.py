@@ -38,6 +38,8 @@ class CollapsibleSidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
+        # Elevation shadow is applied/refreshed by App.change_appearance_mode_event()
+        # so its color tracks the active Light/Dark mode.
         self._expanded_w = SIZE["sidebar_w"]
         self._collapsed_w = SIZE["sidebar_w_collapsed"]
         self._collapsed = False

@@ -17,6 +17,21 @@ DB_PATH = APP_ROOT / "db" / "profiles.db"
 PROFILES_DIR = APP_ROOT / "uploads" / "profiles"
 ASSETS_DIR = APP_ROOT / "assets"
 
+
+def _copy_if_different(source_path, destination_path):
+    """Copy a file unless source and destination resolve to the same path.
+
+    Returns ``True`` when a copy was performed and ``False`` when the copy was
+    skipped because it would be a self-copy.
+    """
+    source = Path(source_path)
+    destination = Path(destination_path)
+    if source.resolve() == destination.resolve():
+        return False
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return True
+
 # Which image keys belong to which partner role.
 ROLE_IMAGE_KEYS = {
     "lead": ["LEAD_CEO_SIG", "LEAD_STAMP", "LEAD_PARTNER_MD1", "LEAD_PARTNER_MD2"],
@@ -165,7 +180,7 @@ def save_profile(name, role, data, image_paths=None, documents=None):
                     ext = ".png"
                 # FIX BUG 5: Use profile-scoped filename to prevent cross-profile collision
                 dest = profile_dir / f"profile_{profile_id}_{img_key}{ext}"
-                shutil.copy2(src_path, dest)
+                _copy_if_different(src_path, dest)
                 saved_images[img_key] = f"profile_{profile_id}_{img_key}{ext}"
 
     if saved_images:
@@ -227,7 +242,7 @@ def update_profile(profile_id, data, image_paths=None, documents_to_add=None, so
                         ext = ".png"
                     # FIX BUG 5: Use profile-scoped filename
                     dest = profile_dir / f"profile_{profile_id}_{img_key}{ext}"
-                    shutil.copy2(src_path, dest)
+                    _copy_if_different(src_path, dest)
                     saved_images[img_key] = f"profile_{profile_id}_{img_key}{ext}"
 
             conn = _connection()

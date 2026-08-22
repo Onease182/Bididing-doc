@@ -17,6 +17,7 @@ BREADCRUMBS = {
 
 class StickyTopBar(QFrame):
     generate_requested = Signal()
+    generate_pdfs_requested = Signal()
     clear_requested = Signal()
 
     def __init__(self, parent=None):
@@ -50,6 +51,11 @@ class StickyTopBar(QFrame):
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.clicked.connect(self.clear_requested.emit)
         row.addWidget(self.clear_btn)
+
+        self.pdfs_btn = QPushButton("Generate PDFs")
+        self.pdfs_btn.setCursor(Qt.PointingHandCursor)
+        self.pdfs_btn.clicked.connect(self.generate_pdfs_requested.emit)
+        row.addWidget(self.pdfs_btn)
 
         self.generate_btn = QPushButton("Generate Bid")
         self.generate_btn.setObjectName("Primary")
