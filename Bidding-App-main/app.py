@@ -30,6 +30,59 @@ from top_bar import StickyTopBar
 from summary_panel import StickySummaryPanel
 from format_utils import format_percentage
 
+
+class SectionedFormGrid:
+    """Route legacy row-based form calls into titled visual cards."""
+
+    def __init__(self, parent, sections):
+        self.parent = parent
+        self.sections = sections
+        self._next_row = 0
+        outer = QVBoxLayout(parent)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(14)
+        self._cards = []
+        for start, end, title, subtitle in sections:
+            card = QFrame(parent)
+            card.setObjectName("FormCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(16, 14, 16, 16)
+            card_layout.setSpacing(8)
+
+            heading = QLabel(title)
+            heading.setObjectName("CardTitle")
+            card_layout.addWidget(heading)
+            if subtitle:
+                description = QLabel(subtitle)
+                description.setObjectName("CardSubtitle")
+                description.setWordWrap(True)
+                card_layout.addWidget(description)
+
+            grid_host = QWidget(card)
+            grid = QGridLayout(grid_host)
+            grid.setContentsMargins(0, 6, 0, 0)
+            grid.setHorizontalSpacing(10)
+            grid.setVerticalSpacing(8)
+            card_layout.addWidget(grid_host)
+            outer.addWidget(card)
+            self._cards.append((start, end, grid))
+
+        outer.addStretch(1)
+
+    def _section_for_row(self, row):
+        for start, end, grid in self._cards:
+            if start <= row <= end:
+                return start, grid
+        return self._cards[-1][0], self._cards[-1][2]
+
+    def addWidget(self, widget, row, column, row_span=1, column_span=1, *args):
+        start, grid = self._section_for_row(row)
+        grid.addWidget(widget, row - start, column, row_span, column_span, *args)
+        self._next_row = max(self._next_row, row + row_span)
+
+    def rowCount(self):
+        return self._next_row
+
 # ---- Role prefix mapping for cross-role profile loading ---------------------
 ROLE_PREFIXES = {"lead": "LEAD", "first": "FIRST", "second": "SECOND"}
 PERCENTAGE_KEYS = {"lead": "L_PER", "first": "F_PER", "second": "S_PER"}
@@ -80,10 +133,6 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._current_draft_id = None
         self.profile_save_btns = {}  # Tracks the save buttons for dynamic text
 
-        # State for the Preview -> Save -> Split review workflow
-        self._last_generated_docx = None
-        self._last_generated_pdf = None
-        self._last_partner_count = None
 
         self._build_shell()
 
@@ -94,16 +143,12 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
 
         self._wire_shell()
         self._refresh_draft_selector()
-        self.change_appearance_mode_event("Dark")
-
-        QTimer.singleShot(100, lambda r="lead": self._refresh_partner_docs(r))
-        QTimer.singleShot(100, lambda r="first": self._refresh_partner_docs(r))
-        QTimer.singleShot(100, lambda r="second": self._refresh_partner_docs(r))
+        self.change_appearance_mode_event("Light")
 
         self._summary_timer = QTimer(self)
         self._summary_timer.setInterval(600)
         self._summary_timer.timeout.connect(self._refresh_summary)
-        self._summary_timer.start()
+        QTimer.singleShot(2000, self._summary_timer.start)
 
     def _build_shell(self):
         central = QWidget()
@@ -124,19 +169,6 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.top_bar = StickyTopBar()
         main_col_layout.addWidget(self.top_bar)
 
-        self.doc_actions_bar = QWidget()
-        doc_actions_layout = QHBoxLayout(self.doc_actions_bar)
-        doc_actions_layout.setContentsMargins(16, 8, 16, 0)
-        self.preview_btn = QPushButton("Preview Document")
-        self.save_btn = QPushButton("Save Reviewed Document")
-        self.save_btn.setEnabled(False)
-        self.split_btn = QPushButton("Split into Section PDFs (<1MB)")
-        self.split_btn.setEnabled(False)
-        doc_actions_layout.addWidget(self.preview_btn)
-        doc_actions_layout.addWidget(self.save_btn)
-        doc_actions_layout.addWidget(self.split_btn)
-        doc_actions_layout.addStretch(1)
-        main_col_layout.addWidget(self.doc_actions_bar)
 
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setChildrenCollapsible(False)
@@ -182,9 +214,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.top_bar.generate_requested.connect(self.generate_doc)
         self.top_bar.clear_requested.connect(self.clear_fields)
 
-        self.preview_btn.clicked.connect(self.preview_doc)
-        self.save_btn.clicked.connect(self.save_generated_doc)
-        self.split_btn.clicked.connect(self.split_generated_doc)
+        self.top_bar.generate_pdfs_requested.connect(self.split_generated_doc)
 
         self.summary_panel.upload_btn.clicked.connect(self.upload_employer_pdf)
 
@@ -194,6 +224,9 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.stacked.setCurrentIndex(MODULE_ORDER.index(module_id))
         self.sidebar.set_active(module_id)
         self.top_bar.set_breadcrumb(module_id)
+        # Lazy-load partner docs only when the tab is first shown
+        if module_id in ("lead", "first", "second"):
+            self._refresh_partner_docs(module_id)
 
     def _toggle_theme_command(self):
         current = self.sidebar.theme_combo.currentText()
@@ -241,14 +274,11 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             return entry.currentText()
         return entry.text()
 
-    def _make_scroll_grid(self, parent_tab):
+    def _make_scroll_grid(self, parent_tab, sections):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content = QWidget()
-        grid = QGridLayout(content)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
+        grid = SectionedFormGrid(content, sections)
         scroll.setWidget(content)
 
         parent_layout = QVBoxLayout(parent_tab)
@@ -455,6 +485,24 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._set_combo_text_silent(menu, "-- No profile --")
         self._update_profile_button_state(role)  # FIX: Update button here too
 
+
+    def _clear_role_state(self, role):
+        """Clear form, image, and signature state for one partner role."""
+        field_map = profiles.ROLE_FIELD_KEYS.get(role, {})
+        for entry_key in field_map.values():
+            self.set_form_value(entry_key, "")
+
+        for img_key in profiles.ROLE_IMAGE_KEYS.get(role, []):
+            self.image_mapping.pop(img_key, None)
+            status_label = getattr(self, f"status_{img_key}", None)
+            if status_label:
+                self._mark_status(status_label, False)
+
+        self.image_mapping.pop("AUTHORISED_SIG", None)
+        auth_status = getattr(self, "status_AUTHORISED_SIG", None)
+        if auth_status:
+            self._mark_status(auth_status, False)
+
     def on_profile_selected(self, role, choice):
         profile_id = self.profile_maps.get(role, {}).get(choice)
 
@@ -462,6 +510,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._update_profile_button_state(role)
 
         if not profile_id:
+            self._clear_role_state(role)
             self.session_docs[role] = {c: [] for c in profiles.ATTACHMENT_CATEGORIES}
             self._refresh_partner_docs(role)
             self._update_jv_name_suggestion()
@@ -616,15 +665,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
                 self.refresh_profile_menu(r)
 
             self.session_docs[role] = {c: [] for c in profiles.ATTACHMENT_CATEGORIES}
-            field_map = profiles.ROLE_FIELD_KEYS[role]
-            for data_key, entry_key in field_map.items():
-                self.set_form_value(entry_key, "")
-
-            for img_key in profiles.ROLE_IMAGE_KEYS.get(role, []):
-                status_label = getattr(self, f"status_{img_key}", None)
-                if status_label:
-                    self._mark_status(status_label, False)
-
+            self._clear_role_state(role)
             self._refresh_partner_docs(role)
             self._update_jv_name_suggestion()
             self._update_percentage_total()
@@ -636,10 +677,18 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         layout = QVBoxLayout(self.tab_project)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        left_frame = QWidget()
-        left_grid = QGridLayout(left_frame)
-        layout.addWidget(left_frame)
-        layout.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        left_grid = SectionedFormGrid(
+            content,
+            [
+                (0, 4, "Project identity", "Define the bid and employer context."),
+                (5, 9, "Bid settings", "Set timing, validity, and document conventions."),
+            ],
+        )
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
         fields = [
             ("JV_NAME", "JV Name", False, None),
@@ -671,7 +720,16 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.entries["JV_NAME"].textChanged.connect(lambda _t: self._on_jv_name_keyrelease())
 
     def setup_lead_tab(self):
-        content, grid = self._make_scroll_grid(self.tab_lead)
+        content, grid = self._make_scroll_grid(
+            self.tab_lead,
+            [
+                (0, 0, "Partner profile", "Load a reusable profile or save the current details."),
+                (1, 3, "Organisation details", "Enter the lead partner identity and address."),
+                (4, 6, "Authorised persons", "Add signatories and their supporting signatures."),
+                (7, 7, "Ownership", "The lead partner share must contribute to a 100% total."),
+                (8, 99, "Supporting documents", "Attach evidence required for this partner."),
+            ],
+        )
 
         self.create_profile_bar(grid, "lead", row=0)
 
@@ -693,7 +751,16 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._build_partner_docs_section(grid, "lead")
 
     def setup_partners_tab(self):
-        content_first, grid_first = self._make_scroll_grid(self.tab_first)
+        content_first, grid_first = self._make_scroll_grid(
+            self.tab_first,
+            [
+                (0, 0, "Partner profile", "Load a reusable profile or save the current details."),
+                (1, 3, "Organisation details", "Enter the first partner identity and address."),
+                (4, 6, "Authorised persons", "Add signatories and their supporting signatures."),
+                (7, 7, "Ownership", "The first partner share must contribute to a 100% total."),
+                (8, 99, "Supporting documents", "Attach evidence required for this partner."),
+            ],
+        )
 
         self.create_profile_bar(grid_first, "first", row=0)
 
@@ -714,7 +781,16 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
 
         self._build_partner_docs_section(grid_first, "first")
 
-        content_second, grid_second = self._make_scroll_grid(self.tab_second)
+        content_second, grid_second = self._make_scroll_grid(
+            self.tab_second,
+            [
+                (0, 0, "Partner profile", "Load a reusable profile or save the current details."),
+                (1, 3, "Organisation details", "Enter the second partner identity and address."),
+                (4, 6, "Authorised persons", "Add signatories and their supporting signatures."),
+                (7, 7, "Ownership", "The second partner share must contribute to a 100% total."),
+                (8, 99, "Supporting documents", "Attach evidence required for this partner."),
+            ],
+        )
 
         self.create_profile_bar(grid_second, "second", row=0)
 
@@ -883,12 +959,6 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def _do_clear_fields(self):
         self._current_draft_id = None
 
-        self._last_generated_docx = None
-        self._last_generated_pdf = None
-        self._last_partner_count = None
-        if hasattr(self, "save_btn"):
-            self.save_btn.setEnabled(False)
-            self.split_btn.setEnabled(False)
 
         for entry in self.entries.values():
             entry.blockSignals(True)
@@ -1073,6 +1143,9 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             }
             self._refresh_partner_docs(role)
 
+        # Always clear the previous draft's PDF before loading this draft.
+        # Otherwise a draft without a valid PDF inherits an unrelated viewer.
+        self._clear_employer_pdf()
         employer_pdf_path = draft.get("employer_pdf_path") or ""
         if employer_pdf_path and os.path.exists(employer_pdf_path):
             self._set_employer_pdf(employer_pdf_path, notify_on_error=False)
@@ -1164,94 +1237,51 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             errors.append("An authorised-person signature image is required.")
         return errors
 
-    def preview_doc(self):
-        """Generate the bid, convert it to PDF, and show it in the review
-        dialog before the user commits to saving or splitting it."""
-        data = {k: self._entry_value(v) for k, v in self.entries.items()}
-        validation_errors = self._validate_bid(data)
-        if validation_errors:
-            QMessageBox.warning(
-                self,
-                "Please correct the bid",
-                "Preview was stopped because of the following issues:\n\n- "
-                + "\n- ".join(validation_errors),
-            )
-            return
 
-        for pct_key in ("L_PER", "F_PER", "S_PER"):
-            if pct_key in data:
-                data[pct_key] = format_percentage(
-                    str(data[pct_key]).strip().replace("%", "")
-                )
-                if data[pct_key]:
-                    data[pct_key] += "%"
-
-        total_pct = self._update_percentage_total()
-        if abs(total_pct - 100.0) > 0.01:
-            QMessageBox.critical(
-                self, "Invalid Percentage Split",
-                "Partner percentage shares must add up to 100%.\n"
-                "Current total: {:.2f}%".format(total_pct),
-            )
-            return
-
-        second_partner_name = data.get("SECOND_PARTNER_NAME", "")
-        data["HAS_THIRD_PARTNER"] = "False" if self.generator.is_empty_value(second_partner_name) else "True"
-        data["AUTHORIZED_CAPACITY"] = "Authorised person of JV"
-
-        try:
-            docx_path = self.generator.generate(data, self.image_mapping)
-            pdf_path = self.generator.convert_to_pdf(docx_path)
-        except Exception as e:
-            QMessageBox.critical(self, "Preview Failed", str(e))
-            return
-
-        self._last_generated_docx = docx_path
-        self._last_generated_pdf = pdf_path
-        self._last_partner_count = self.generator.determine_partner_count(data)
-
-        self.save_btn.setEnabled(True)
-        self.split_btn.setEnabled(True)
-
-        self._preview_document(str(pdf_path))
-        logger.info(f"Previewed generated bid: {docx_path}")
-
-    def save_generated_doc(self):
-        """Let the user save a copy of the most recently previewed bid."""
-        if not self._last_generated_docx:
-            QMessageBox.information(self, "Nothing to Save", "Preview a document first.")
-            return
-        dest, _ = QFileDialog.getSaveFileName(
-            self, "Save Bid Document As", str(self._last_generated_docx),
-            "Word Document (*.docx)",
-        )
-        if not dest:
-            return
-        try:
-            shutil.copy2(self._last_generated_docx, dest)
-        except OSError as e:
-            QMessageBox.critical(self, "Save Failed", str(e))
-            return
-        QMessageBox.information(self, "Saved", f"Saved to:\n{dest}")
-        logger.info(f"Saved reviewed bid to {dest}")
 
     def split_generated_doc(self):
-        """Split the most recently previewed PDF into per-section files,
-        each compressed to under 1MB and named after its section."""
-        if not self._last_generated_pdf:
-            QMessageBox.information(self, "Nothing to Split", "Preview a document first.")
+        """Convert a selected .docx to PDF and split into section PDFs."""
+        docx_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Word Document",
+            str(Path.home()),
+            "Word Documents (*.docx)",
+        )
+        if not docx_path:
             return
 
+        # Convert .docx to PDF
+        try:
+            pdf_path = self.generator.convert_to_pdf(docx_path)
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Conversion Failed",
+                f"Could not convert the document to PDF:\n{e}"
+            )
+            return
+
+        options = ["1 partner", "2 partners", "3 partners"]
+        selected, ok = QInputDialog.getItem(
+            self,
+            "Select bid layout",
+            "How many partners does this document contain?",
+            options,
+            1,  # default to 2 partners
+            False,
+        )
+        if not ok:
+            return
+        partner_count = options.index(selected) + 1
+
         out_dir = QFileDialog.getExistingDirectory(
-            self, "Choose folder for split section PDFs",
-            str(Path(self._last_generated_pdf).parent),
+            self, "Choose folder for split section PDFs", str(Path(pdf_path).parent),
         )
         if not out_dir:
             return
 
         try:
             written, warnings = pdf_export.split_and_compress(
-                self._last_generated_pdf, self._last_partner_count, out_dir,
+                pdf_path, partner_count, out_dir,
             )
         except Exception as e:
             QMessageBox.critical(self, "Split Failed", str(e))
@@ -1261,7 +1291,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         if warnings:
             msg += "\n\nWarnings:\n- " + "\n- ".join(warnings)
         QMessageBox.information(self, "Split Complete", msg)
-        logger.info(f"Split bid into {len(written)} section PDFs in {out_dir}")
+        logger.info(f"Split {pdf_path} into {len(written)} section PDFs in {out_dir}")
 
         try:
             if sys.platform == "win32":
@@ -1340,14 +1370,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def change_appearance_mode_event(self, new_appearance_mode: str):
         app = QApplication.instance()
         app.setStyleSheet(theme.build_qss(new_appearance_mode))
-        # Elevation shadows are drawn via QGraphicsDropShadowEffect (QSS has
-        # no box-shadow), so their color has to be refreshed per mode too.
-        if hasattr(self, "sidebar"):
-            theme.apply_elevation(self.sidebar, blur=28, y_offset=0, mode=new_appearance_mode)
-        if hasattr(self, "top_bar"):
-            theme.apply_elevation(self.top_bar, blur=24, y_offset=4, mode=new_appearance_mode)
-        if hasattr(self, "summary_panel"):
-            theme.apply_elevation(self.summary_panel, blur=28, y_offset=0, mode=new_appearance_mode)
+        # Drop shadows removed for performance — keep only stylesheet swap
         if hasattr(self, "sidebar") and self.sidebar.theme_combo.currentText() != new_appearance_mode:
             self.sidebar.theme_combo.blockSignals(True)
             self.sidebar.theme_combo.setCurrentText(new_appearance_mode)
