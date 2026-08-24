@@ -22,6 +22,9 @@ def collect_data(form):
     # Keep the existing document templates compatible while making the web form signature-free.
     for key in ("LEAD_STAMP", "LEAD_CEO_SIG", "FIRST_STAMP", "FIRST_CEO_SIG", "SECOND_STAMP", "SECOND_CEO_SIG", "AUTHORISED_SIG"):
         data[key] = ""
+    # The two-partner template uses this standalone conjunction between
+    # partner names. Single-bidder templates do not contain the placeholder.
+    data["AND_CONNECTOR"] = "and" if data["BID_TYPE"] == "Joint Venture" else ""
     return data
 
 

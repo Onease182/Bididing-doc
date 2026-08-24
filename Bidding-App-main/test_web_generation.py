@@ -44,3 +44,34 @@ with ZipFile(output) as package:
     xml = "\\n".join(package.read(name).decode("utf-8", errors="ignore") for name in package.namelist() if name.endswith(".xml"))
     assert not any(token in xml.upper() for token in ("LEAD_STAMP", "FIRST_STAMP", "SECOND_STAMP", "CEO_SIG", "AUTHORISED_SIG"))
 print("Word generation: ok; unsigned and unstamped package verified")
+
+second_response = client.post("/generate", data={
+    "BID_TYPE": "Joint Venture",
+    "PROJECT_NAME": "North District Works",
+    "BID_DATE": "2026-08-24",
+    "EMPLOYER_NAME": "City Works Authority",
+    "EMPLOYER_ADDRESS": "1 Civic Plaza",
+    "IFB_NUMBER": "IFB-2026-018",
+    "BID_VALIDITY_PERIOD": "120",
+    "JV_NAME": "Apex Meridian JV",
+    "JV_ADDRESS": "12 Market Street",
+    "AUTHORIZED_PERSON_NAME": "Jordan Lee",
+    "LEAD_PARTNER_NAME": "Apex Civil Engineering Ltd",
+    "LEAD_PARTNER_SHORT": "Apex",
+    "LEAD_ADDRESS": "12 Market Street",
+    "LEAD_PARTNER_CEO": "Jordan Lee",
+    "L_PER": "60",
+    "FIRST_PARTNER_NAME": "Meridian Infrastructure Ltd",
+    "FIRST_PARTNER_SHORT": "Meridian",
+    "FIRST_ADDRESS": "24 River Road",
+    "FIRST_PARTNER_CEO": "Taylor Smith",
+    "F_PER": "40",
+    "SECOND_PARTNER_NAME": "",
+    "SECOND_PARTNER_SHORT": "",
+    "SECOND_ADDRESS": "",
+    "SECOND_PARTNER_CEO": "",
+    "S_PER": "",
+})
+assert second_response.status_code == 200, second_response.data.decode("utf-8", errors="ignore")[:1000]
+assert second_response.mimetype == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+print("Two-partner Word generation: ok; AND_CONNECTOR resolved")
