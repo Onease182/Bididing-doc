@@ -342,12 +342,15 @@ class BidDocumentGenerator:
         # Build an explicit role-specific removal set. Do not add deletion
         # sentinels to image_mapping, because that can collide with stale or
         # cross-role image assignments.
-        remove_image_keys = set()
-        for prefix in ("LEAD", "FIRST", "SECOND"):
-            for suffix in ("PARTNER_MD1", "PARTNER_MD2"):
-                key = f"{prefix}_{suffix}"
-                if self.is_empty_value(data.get(key)):
-                    remove_image_keys.add(key)
+        # The web workflow is intentionally unsigned and unstamped. Remove every
+        # signature/stamp image slot regardless of whether an older session supplied
+        # an image mapping, so generated Word files never contain those assets.
+        remove_image_keys = {
+            "LEAD_STAMP", "LEAD_CEO_SIG", "LEAD_PARTNER_MD1", "LEAD_PARTNER_MD2",
+            "FIRST_STAMP", "FIRST_CEO_SIG", "FIRST_PARTNER_MD1", "FIRST_PARTNER_MD2",
+            "SECOND_STAMP", "SECOND_CEO_SIG", "SECOND_PARTNER_MD1", "SECOND_PARTNER_MD2",
+            "AUTHORISED_SIG", "AUTHORIZED_SIG",
+        }
         self.replace_images_batch(doc, image_mapping, remove_keys=remove_image_keys)
         unresolved = self.unresolved_placeholders(doc)
         if unresolved:

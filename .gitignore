@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+Bidding-App-main/output/
+Bidding-App-main/assets/
+Bidding-App-main/*.log
+Bidding-App-main/db/*.db

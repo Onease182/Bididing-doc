@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bididing | Word Document Builder</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='web.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">B</span><div><strong>Bididing</strong><small>Document workspace</small></div></div>
+      <div class="sidebar-rule"></div>
+      <p class="eyebrow">WORKSPACE</p>
+      <div class="nav-item active"><span>01</span><div><b>Bid details</b><small>Project and employer</small></div></div>
+      <div class="nav-item"><span>02</span><div><b>Partner setup</b><small>Organisation information</small></div></div>
+      <div class="nav-item"><span>03</span><div><b>Review & export</b><small>Word document only</small></div></div>
+      <div class="sidebar-bottom"><div class="secure-dot"></div><div><b>Private workspace</b><small>Your data stays on this session</small></div></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar"><div><p class="eyebrow">DOCUMENT BUILDER / NEW BID</p><h1>Prepare your bid document</h1></div><div class="topbar-note"><span class="status-dot"></span><span>Word export enabled</span></div></header>
+      <div class="content-grid">
+        <section class="form-column">
+          {% if errors %}<div class="alert"><strong>We need a few corrections.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+          <form method="post" action="{{ url_for('generate_word') }}" id="bid-form">
+            <div class="section-heading"><div class="section-number">01</div><div><h2>Bid overview</h2><p>Start with the information that identifies this submission.</p></div></div>
+            <div class="card form-card">
+              <div class="field full"><label for="BID_TYPE">Submission type</label><select id="BID_TYPE" name="BID_TYPE"><option {% if data.BID_TYPE == 'Joint Venture' %}selected{% endif %}>Joint Venture</option><option {% if data.BID_TYPE == 'Single Bidder' %}selected{% endif %}>Single Bidder</option></select></div>
+              <div class="field"><label for="PROJECT_NAME">Project name <em>Required</em></label><input id="PROJECT_NAME" name="PROJECT_NAME" value="{{ data.PROJECT_NAME }}" placeholder="e.g. Central Link Infrastructure Project" required></div>
+              <div class="field"><label for="BID_DATE">Bid date <em>Required</em></label><input id="BID_DATE" type="date" name="BID_DATE" value="{{ data.BID_DATE }}" required></div>
+              <div class="field"><label for="EMPLOYER_NAME">Employer name <em>Required</em></label><input id="EMPLOYER_NAME" name="EMPLOYER_NAME" value="{{ data.EMPLOYER_NAME }}" placeholder="Organisation issuing the bid" required></div>
+              <div class="field"><label for="IFB_NUMBER">IFB / reference number</label><input id="IFB_NUMBER" name="IFB_NUMBER" value="{{ data.IFB_NUMBER }}" placeholder="Optional reference"></div>
+              <div class="field"><label for="EMPLOYER_ADDRESS">Employer address</label><input id="EMPLOYER_ADDRESS" name="EMPLOYER_ADDRESS" value="{{ data.EMPLOYER_ADDRESS }}" placeholder="Employer correspondence address"></div>
+              <div class="field"><label for="BID_VALIDITY_PERIOD">Bid validity period</label><input id="BID_VALIDITY_PERIOD" name="BID_VALIDITY_PERIOD" value="{{ data.BID_VALIDITY_PERIOD }}" placeholder="e.g. 120 days"></div>
+              <div class="field"><label for="JV_NAME">JV name <span class="conditional">For joint ventures</span></label><input id="JV_NAME" name="JV_NAME" value="{{ data.JV_NAME }}" placeholder="Name shown on the document"></div>
+              <div class="field"><label for="JV_ADDRESS">JV address</label><input id="JV_ADDRESS" name="JV_ADDRESS" value="{{ data.JV_ADDRESS }}" placeholder="Registered or correspondence address"></div>
+              <div class="field"><label for="AUTHORIZED_PERSON_NAME">Authorised person</label><input id="AUTHORIZED_PERSON_NAME" name="AUTHORIZED_PERSON_NAME" value="{{ data.AUTHORIZED_PERSON_NAME }}" placeholder="Name for document text only"></div>
+            </div>
+
+            <div class="section-heading"><div class="section-number">02</div><div><h2>Partner setup</h2><p>Provide the organisations participating in the bid. No signature or stamp uploads are needed.</p></div></div>
+            <div class="partner-grid">
+              {% for prefix, title, per, required in [('LEAD','Lead partner','L_PER',True),('FIRST','First partner','F_PER',False),('SECOND','Second partner','S_PER',False)] %}
+              <div class="card partner-card" data-partner="{{ prefix }}">
+                <div class="partner-card-head"><div><span class="partner-label">{% if prefix == 'LEAD' %}PRIMARY{% else %}OPTIONAL{% endif %}</span><h3>{{ title }}</h3></div><span class="step-pill">{{ loop.index }}/3</span></div>
+                <div class="field full"><label for="{{ prefix }}_PARTNER_NAME">Organisation name {% if required %}<em>Required</em>{% endif %}</label><input id="{{ prefix }}_PARTNER_NAME" name="{{ prefix }}_PARTNER_NAME" value="{{ data[prefix + '_PARTNER_NAME'] }}" placeholder="Legal organisation name" {% if required %}required{% endif %}></div>
+                <div class="field"><label for="{{ prefix }}_PARTNER_SHORT">Short name</label><input id="{{ prefix }}_PARTNER_SHORT" name="{{ prefix }}_PARTNER_SHORT" value="{{ data[prefix + '_PARTNER_SHORT'] }}" placeholder="Short name"></div>
+                <div class="field"><label for="{{ prefix }}_ADDRESS">Address {% if required %}<em>Required</em>{% endif %}</label><input id="{{ prefix }}_ADDRESS" name="{{ prefix }}_ADDRESS" value="{{ data[prefix + '_ADDRESS'] }}" placeholder="Business address" {% if required %}required{% endif %}></div>
+                <div class="field"><label for="{{ prefix }}_PARTNER_CEO">Authorised person {% if prefix != 'LEAD' %}<span class="conditional">Required if added</span>{% endif %}</label><input id="{{ prefix }}_PARTNER_CEO" name="{{ prefix }}_PARTNER_CEO" value="{{ data[prefix + '_PARTNER_CEO'] }}" placeholder="Name and title"></div>
+                <div class="field"><label for="{{ prefix }}_PARTNER_MD1">Managing director</label><input id="{{ prefix }}_PARTNER_MD1" name="{{ prefix }}_PARTNER_MD1" value="{{ data[prefix + '_PARTNER_MD1'] }}" placeholder="Optional"></div>
+                <div class="field"><label for="{{ prefix }}_PARTNER_MD2">Second director</label><input id="{{ prefix }}_PARTNER_MD2" name="{{ prefix }}_PARTNER_MD2" value="{{ data[prefix + '_PARTNER_MD2'] }}" placeholder="Optional"></div>
+                <div class="field ownership"><label for="{{ prefix }}_PER">Ownership share</label><div class="input-suffix"><input id="{{ prefix }}_PER" name="{{ per }}" value="{{ data[per] }}" placeholder="0"><span>%</span></div></div>
+              </div>
+              {% endfor %}
+            </div>
+
+            <div class="section-heading"><div class="section-number">03</div><div><h2>Export</h2><p>Generate the editable Word file when your details are ready.</p></div></div>
+            <div class="card export-card"><div class="export-icon">W</div><div class="export-copy"><h3>Unsigned Word document</h3><p>Your document is generated directly from the selected bid template. Signature images, stamps, and PDF conversion are intentionally excluded.</p></div><button type="submit" class="primary-button"><span>Generate Word document</span><span class="button-arrow">→</span></button></div>
+          </form>
+        </section>
+        <aside class="summary-column"><div class="summary-sticky"><div class="summary-card"><div class="summary-top"><span class="eyebrow">LIVE SUMMARY</span><span class="live-badge"><span class="status-dot"></span>Live</span></div><h2>Submission readiness</h2><p class="summary-description">Complete the form to prepare a clean, editable Word deliverable.</p><div class="readiness-bar"><div class="readiness-fill" id="readiness-fill"></div></div><div class="readiness-meta"><span id="readiness-label">Getting started</span><strong id="readiness-percent">0%</strong></div><div class="summary-list"><div><span class="summary-check" id="check-project">○</span><span>Bid overview</span></div><div><span class="summary-check" id="check-employer">○</span><span>Employer details</span></div><div><span class="summary-check" id="check-lead">○</span><span>Lead partner</span></div><div><span class="summary-check" id="check-ownership">○</span><span>Ownership allocation</span></div></div></div><div class="info-card"><span class="info-icon">i</span><div><strong>Designed for editing</strong><p>The exported .docx stays editable so your team can make final internal updates in Microsoft Word.</p></div></div></div></aside>
+      </div>
+      <footer class="footer"><span>Bididing Document Workspace</span><span>Word-only workflow · No signature or PDF processing</span></footer>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='web.js') }}"></script>
+</body>
+</html>

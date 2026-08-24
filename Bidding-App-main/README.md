@@ -1,23 +1,26 @@
 # JV Bid Pro
 
-A desktop application (PySide6) for assembling Joint Venture (JV) bid documents from a Word template. It replaces the placeholder text and images in a `.docx` template with data entered in the form and produces a ready-to-submit bid document.
+A browser-based application for assembling Joint Venture (JV) bid documents from a Word template. It replaces placeholder text in a `.docx` template with data entered in the form and downloads an editable Word document.
+
+The current web workflow is intentionally streamlined: it produces **Word only**, excludes all signature and stamp assets, and does not convert documents to PDF.
 
 ## What it actually does
 
-- **Desktop app, not a web app.** Built with PySide6 (Qt), not Streamlit/Flask/Django.
-- **Supports 1–3 partners** in a joint venture: Lead, First, and Second partner tabs, each with its own fields (name, short name, address, CEO, managing directors, ownership percentage) and supporting-document uploads.
-- **JV Name auto-suggestion** from partner short names, and a live percentage guard rail that flags totals that don't add up to 100%.
-- **Partner profiles** are saved to a local SQLite database (`db/profiles.db`) so partner details can be reused across bids, including cross-role loading (e.g. load a "First Partner" profile into the "Second Partner" slot).
-- **Document generation** (`doc_generator.py`) does placeholder find-and-replace and image replacement in a `.docx` template using `python-docx` and `lxml`, then writes the output to `output/`.
-- **Employer PDF viewer** built into the summary panel, using PyMuPDF (`fitz`) to render and paginate an uploaded PDF for reference while filling the form.
-- **Command palette** (Ctrl+K) for quick navigation between tabs and actions (generate, clear fields, toggle theme).
-- Light/dark theme, collapsible sidebar, sticky top bar, and a live summary/preview panel — a fuller enterprise-style UI shell.
+- **Supports 1–3 partners** in a joint venture: Lead, First, and Second partner sections with organisation details, authorised-person names, managing directors, and ownership percentages.
+- **Validates the essentials** before generation, including required project and employer information, partner ordering, and 100% ownership allocation for joint ventures.
+- **Generates editable Word documents** from the checked-in templates with `python-docx` and `lxml`.
+- **Excludes signatures and stamps by design.** The web form has no image-upload controls, and the generator removes all signature/stamp image slots from the output.
+- **Does not convert to PDF.** The web workflow ends at the `.docx` download.
+- **Professional responsive workspace** with a persistent navigation rail, live readiness summary, clear form cards, and mobile-friendly layout.
 
 ## Project structure
 
 | File | Purpose |
 |---|---|
-| `app.py` | Main window; wires the UI shell together and owns generation logic |
+| `web_app.py` | Flask web entry point and Word download endpoint |
+| `web_templates/` | Professional responsive browser interface |
+| `web_static/` | Styles and live readiness interactions |
+| `app.py` | Legacy PySide6 desktop shell |
 | `doc_generator.py` | Core placeholder/image replacement logic for the `.docx` template |
 | `profiles.py` | SQLite-backed partner profile storage |
 | `partner_docs.py` | Supporting-document upload/preview per partner |
@@ -33,7 +36,8 @@ A desktop application (PySide6) for assembling Joint Venture (JV) bid documents 
 - `PySide6`
 - `python-docx`
 - `lxml`
-- `PyMuPDF` (`fitz`) — optional; without it the PDF page-count/viewer features are disabled but the rest of the app still runs
+- `Flask` for the browser interface
+- `PySide6` and `PyMuPDF` remain available only for the legacy desktop shell
 
 Install the dependencies from the checked-in requirements file:
 
@@ -41,13 +45,18 @@ Install the dependencies from the checked-in requirements file:
 python -m pip install -r requirements.txt
 ```
 
-## Running
+## Running the web app
+
+Install dependencies and start the browser-based workflow:
 
 ```bash
-python app.py
+python -m pip install -r requirements.txt
+python web_app.py
 ```
 
-The application now resolves its templates, databases, uploads, assets, logs, and generated output relative to the application directory rather than the current shell directory. Before generating a document, it validates required fields, partner ordering, ownership percentages, and the authorised-person signature. It also blocks output when unresolved `{{PLACEHOLDER}}` tokens remain in the selected Word template.
+Then open `http://127.0.0.1:5000` in a browser. The legacy PySide6 desktop shell remains available with `python app.py`, but the recommended interface is the professional web workspace.
+
+The web application resolves templates and generated output relative to the application directory. Before generating a document, it validates required fields, partner ordering, ownership percentages, and unresolved template placeholders. It never asks for or embeds signature/stamp images, and it does not create a PDF.
 
 ## Testing
 
