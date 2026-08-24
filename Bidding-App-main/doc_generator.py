@@ -290,6 +290,11 @@ class BidDocumentGenerator:
         return replacements
 
     def determine_partner_count(self, data):
+        if data.get("BID_TYPE") == "Single Bidder":
+            lead_name = data.get("LEAD_PARTNER_NAME", "")
+            if self.is_empty_value(lead_name):
+                raise ValueError("Lead partner name is required for single bidder.")
+            return 1
         lead_name = data.get("LEAD_PARTNER_NAME", "")
         first_name = data.get("FIRST_PARTNER_NAME", "")
         second_name = data.get("SECOND_PARTNER_NAME", "")

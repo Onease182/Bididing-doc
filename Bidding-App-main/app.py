@@ -22,7 +22,7 @@ import profiles
 import drafts
 import theme
 import pdf_export
-from doc_generator import BidDocumentGenerator
+# from doc_generator import BidDocumentGenerator  # lazy-imported in __init__ to avoid circular import
 from pdf_viewer import PDFViewerMixin
 from partner_docs import PartnerDocsMixin
 from sidebar import CollapsibleSidebar
@@ -117,6 +117,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.resize(1440, 900)
 
         self.app_root = APP_ROOT
+        from doc_generator import BidDocumentGenerator
         self.generator = BidDocumentGenerator(self.app_root)
         self.image_mapping = {}
         self.partner_docs_widgets = {}
@@ -137,6 +138,8 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._build_shell()
 
         self.entries = {}
+        self.labels = {}
+        self._partner_tabs_enabled = True
         self.setup_project_tab()
         self.setup_lead_tab()
         self.setup_partners_tab()
@@ -221,6 +224,8 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def _navigate(self, module_id):
         if module_id not in MODULE_ORDER:
             return
+        if module_id in ("first", "second") and not self._partner_tabs_enabled:
+            return
         self.stacked.setCurrentIndex(MODULE_ORDER.index(module_id))
         self.sidebar.set_active(module_id)
         self.top_bar.set_breadcrumb(module_id)
@@ -291,6 +296,7 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         label.setObjectName("FieldLabel")
         label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         grid_layout.addWidget(label, row, 0)
+        self.labels[field_key] = label
 
         if is_combo:
             entry = QComboBox()
@@ -577,8 +583,15 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.session_docs[role] = {c: [] for c in profiles.ATTACHMENT_CATEGORIES}
         self._refresh_partner_docs(role)
         self._update_jv_name_suggestion()
+        self._update_authorised_person_options()
+        self._sync_authorised_signature()
         self._update_percentage_total()
         self._clear_doc_preview(role)
+
+        # NEW: If lead profile loaded in Single Bidder mode, sync Firm's Name/Address
+        if role == "lead":
+            self._on_lead_name_changed_for_single_bidder()
+            self._on_lead_address_changed_for_single_bidder()
 
     def save_current_as_profile(self, role):
         loaded_pid = self._get_loaded_profile_id(role)
@@ -699,7 +712,6 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             ("BID_VALIDITY_PERIOD", "Validity Period", False, None),
             ("EMPLOYER_NAME", "Employer Name", False, None),
             ("EMPLOYER_ADDRESS", "Employer Address", False, None),
-            ("AND_CONNECTOR", "And Connector", False, None),
         ]
         for i, (key, label, is_c, vals) in enumerate(fields):
             self.create_field(left_grid, i, label, key, is_c, vals)
@@ -713,7 +725,6 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         )
 
         self.set_form_value("BID_DATE", datetime.now().strftime("%Y-%m-%d"))
-        self.set_form_value("AND_CONNECTOR", "And")
         self.set_form_value("AUTHORIZED_PERSON_NAME", "")
         self.set_form_value("BID_VALIDITY_PERIOD", "120 days")
 
@@ -723,23 +734,42 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         content, grid = self._make_scroll_grid(
             self.tab_lead,
             [
-                (0, 0, "Partner profile", "Load a reusable profile or save the current details."),
-                (1, 3, "Organisation details", "Enter the lead partner identity and address."),
-                (4, 6, "Authorised persons", "Add signatories and their supporting signatures."),
-                (7, 7, "Ownership", "The lead partner share must contribute to a 100% total."),
-                (8, 99, "Supporting documents", "Attach evidence required for this partner."),
+                (0, 0, "Bid type", "Choose whether this is a joint venture or a single-partner bid."),
+                (1, 1, "Partner profile", "Load a reusable profile or save the current details."),
+                (2, 4, "Organisation details", "Enter the lead partner identity and address."),
+                (5, 7, "Authorised persons", "Add signatories and their supporting signatures."),
+                (8, 8, "Ownership", "The lead partner share must contribute to a 100% total."),
+                (9, 99, "Supporting documents", "Attach evidence required for this partner."),
             ],
         )
 
-        self.create_profile_bar(grid, "lead", row=0)
+        # Explicitly create a strict (non-editable) dropdown for Bid Type
+        bid_type_label = QLabel("Bid Type")
+        bid_type_label.setObjectName("FieldLabel")
+        bid_type_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        grid.addWidget(bid_type_label, 0, 0)
+        self.labels["BID_TYPE"] = bid_type_label
+        
+        bid_type_combo = QComboBox()
+        bid_type_combo.addItems(["Joint Venture", "Single Bidder"])
+        bid_type_combo.setMinimumWidth(280)
+        bid_type_combo.setEditable(False)  # Prevents typing custom text
+        grid.addWidget(bid_type_combo, 0, 1)
+        self.entries["BID_TYPE"] = bid_type_combo
+        
+        self.set_form_value("BID_TYPE", "Joint Venture")
+        bid_type_combo.currentTextChanged.connect(self._on_bid_type_changed)
 
-        self.create_field_with_upload(grid, 1, "Name", "LEAD_PARTNER_NAME", "LEAD_STAMP")
-        self.create_field(grid, 2, "Short Name", "LEAD_PARTNER_SHORT")
-        self.create_field(grid, 3, "Address", "LEAD_ADDRESS")
-        self.create_field_with_upload(grid, 4, "CEO/Authorised Person", "LEAD_PARTNER_CEO", "LEAD_CEO_SIG")
-        self.create_field_with_upload(grid, 5, "Managing Director", "LEAD_PARTNER_MD1", "LEAD_PARTNER_MD1")
-        self.create_field_with_upload(grid, 6, "Managing Director", "LEAD_PARTNER_MD2", "LEAD_PARTNER_MD2")
-        self.create_field(grid, 7, "Lead Percentage (%)", "L_PER", mono=True)
+        self.create_profile_bar(grid, "lead", row=1)
+
+        self.create_field_with_upload(grid, 2, "Name", "LEAD_PARTNER_NAME", "LEAD_STAMP")
+        self.entries["LEAD_PARTNER_NAME"].textChanged.connect(lambda _t: self._on_lead_name_changed_for_single_bidder())
+        self.create_field(grid, 3, "Short Name", "LEAD_PARTNER_SHORT")
+        self.create_field(grid, 4, "Address", "LEAD_ADDRESS")
+        self.create_field_with_upload(grid, 5, "CEO/Authorised Person", "LEAD_PARTNER_CEO", "LEAD_CEO_SIG")
+        self.create_field_with_upload(grid, 6, "Managing Director", "LEAD_PARTNER_MD1", "LEAD_PARTNER_MD1")
+        self.create_field_with_upload(grid, 7, "Managing Director", "LEAD_PARTNER_MD2", "LEAD_PARTNER_MD2")
+        self.create_field(grid, 8, "Lead Percentage (%)", "L_PER", mono=True)
 
         self.entries["LEAD_PARTNER_SHORT"].textChanged.connect(
             lambda _t: self._on_short_name_keyrelease_qt(self.entries["LEAD_PARTNER_SHORT"])
@@ -747,6 +777,9 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self.entries["L_PER"].textChanged.connect(lambda _t: self._update_percentage_total())
         self.entries["LEAD_ADDRESS"].textChanged.connect(lambda _t: self._update_jv_address_options())
         self.entries["LEAD_PARTNER_CEO"].textChanged.connect(lambda _t: self._update_authorised_person_options())
+
+        # NEW: Keep Firm's Address in sync with lead address for Single Bidder mode
+        self.entries["LEAD_ADDRESS"].textChanged.connect(lambda _t: self._on_lead_address_changed_for_single_bidder())
 
         self._build_partner_docs_section(grid, "lead")
 
@@ -894,6 +927,81 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             if status_label:
                 self._mark_status(status_label, False)
 
+    def _on_bid_type_changed(self, mode):
+        """Switch UI between Joint Venture and Single Bidder modes."""
+        is_single = (mode == "Single Bidder")
+
+        # NEW: Update project tab labels based on mode
+        jv_name_label = self.labels.get("JV_NAME")
+        jv_addr_label = self.labels.get("JV_ADDRESS")
+        if jv_name_label:
+            jv_name_label.setText("Firm's Name" if is_single else "JV Name")
+        if jv_addr_label:
+            jv_addr_label.setText("Firm's Address" if is_single else "JV Address")
+
+        # NEW: Enable/disable partner tabs in sidebar
+        self._partner_tabs_enabled = not is_single
+        if hasattr(self.sidebar, 'set_module_enabled'):
+            self.sidebar.set_module_enabled("first", not is_single)
+            self.sidebar.set_module_enabled("second", not is_single)
+        
+        # NEW: If currently on a disabled tab, switch to lead
+        current_idx = self.stacked.currentIndex()
+        if is_single and current_idx in (MODULE_ORDER.index("first"), MODULE_ORDER.index("second")):
+            self._navigate("lead")
+
+        if is_single:
+            lead_name = self.get_form_value("LEAD_PARTNER_NAME").strip()
+            self._setting_jv_name_auto = True
+            self.set_form_value("JV_NAME", lead_name)
+            self._setting_jv_name_auto = False
+            self.entries["JV_NAME"].setEnabled(False)
+            
+            # NEW: Auto-fill Firm's Address from lead address
+            lead_addr = self.get_form_value("LEAD_ADDRESS").strip()
+            self._setting_jv_name_auto = True
+            self.set_form_value("JV_ADDRESS", lead_addr)
+            self._setting_jv_name_auto = False
+            self.entries["JV_ADDRESS"].setEnabled(False)
+        else:
+            self.entries["JV_NAME"].setEnabled(True)
+            self.entries["JV_ADDRESS"].setEnabled(True)
+            self._update_jv_name_suggestion()
+            self._update_jv_address_options()
+
+        if is_single:
+            self.set_form_value("L_PER", "100")
+            self.entries["L_PER"].setEnabled(False)
+            for key in ("F_PER", "S_PER"):
+                entry = self.entries.get(key)
+                if entry:
+                    self.set_form_value(key, "")
+                    entry.setEnabled(False)
+        else:
+            self.entries["L_PER"].setEnabled(True)
+            for key in ("F_PER", "S_PER"):
+                entry = self.entries.get(key)
+                if entry:
+                    entry.setEnabled(True)
+
+        self._update_percentage_total()
+
+    def _on_lead_name_changed_for_single_bidder(self):
+        """Keep JV_NAME synced with lead name when in Single Bidder mode."""
+        if self.get_form_value("BID_TYPE") == "Single Bidder":
+            lead_name = self.get_form_value("LEAD_PARTNER_NAME").strip()
+            self._setting_jv_name_auto = True
+            self.set_form_value("JV_NAME", lead_name)
+            self._setting_jv_name_auto = False
+
+    def _on_lead_address_changed_for_single_bidder(self):
+        """Keep Firm's Address synced with lead address when in Single Bidder mode."""
+        if self.get_form_value("BID_TYPE") == "Single Bidder":
+            lead_addr = self.get_form_value("LEAD_ADDRESS").strip()
+            self._setting_jv_name_auto = True
+            self.set_form_value("JV_ADDRESS", lead_addr)
+            self._setting_jv_name_auto = False
+
     def _on_jv_name_keyrelease(self):
         if getattr(self, "_setting_jv_name_auto", False):
             return
@@ -916,6 +1024,12 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def _update_jv_name_suggestion(self):
         if getattr(self, "_jv_name_manual", False):
             return
+        if self.get_form_value("BID_TYPE") == "Single Bidder":
+            lead = self.get_form_value("LEAD_PARTNER_NAME").strip()
+            self._setting_jv_name_auto = True
+            self.set_form_value("JV_NAME", lead)
+            self._setting_jv_name_auto = False
+            return
         lead = self.get_form_value("LEAD_PARTNER_SHORT").strip()
         first = self.get_form_value("FIRST_PARTNER_SHORT").strip()
         second = self.get_form_value("SECOND_PARTNER_SHORT").strip()
@@ -936,6 +1050,10 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             return 0.0
 
     def _update_percentage_total(self):
+        if self.get_form_value("BID_TYPE") == "Single Bidder":
+            if hasattr(self, "top_bar"):
+                self.top_bar.set_percentage(100.0, True)
+            return 100.0
         total = (
             self._parse_percent("L_PER")
             + self._parse_percent("F_PER")
@@ -1000,11 +1118,12 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             self._employer_pdf_page_index = 0
 
         self.set_form_value("BID_DATE", datetime.now().strftime("%Y-%m-%d"))
-        self.set_form_value("AND_CONNECTOR", "And")
         self.set_form_value("AUTHORIZED_PERSON_NAME", "Authorized person of JV")
         self.set_form_value("BID_VALIDITY_PERIOD", "120 days")
+        self.set_form_value("BID_TYPE", "Joint Venture")
 
         self._jv_name_manual = False
+        self._on_bid_type_changed("Joint Venture")
         self._update_jv_name_suggestion()
         self._update_percentage_total()
 
@@ -1156,6 +1275,9 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         self._sync_authorised_signature()
         self._update_percentage_total()
 
+        # NEW: Refresh UI state for the loaded bid type (Single vs JV)
+        self._on_bid_type_changed(self.get_form_value("BID_TYPE"))
+
         self._current_draft_id = draft_id
         self._refresh_draft_selector()
         logger.info(f"Loaded draft '{draft['name']}' ({draft_id})")
@@ -1181,15 +1303,17 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
     def _validate_bid(self, data):
         """Return user-facing validation errors before document generation."""
         errors = []
+        is_single = data.get("BID_TYPE", "Joint Venture") == "Single Bidder"
 
         required_fields = {
-            "JV_NAME": "JV name",
             "PROJECT_NAME": "Project name",
             "BID_DATE": "Bid date",
             "EMPLOYER_NAME": "Employer name",
             "LEAD_PARTNER_NAME": "Lead partner name",
             "LEAD_ADDRESS": "Lead partner address",
         }
+        if not is_single:
+            required_fields["JV_NAME"] = "JV name"
         for key, label in required_fields.items():
             if not str(data.get(key, "")).strip():
                 errors.append(f"{label} is required.")
@@ -1199,39 +1323,42 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
         except ValueError:
             errors.append("Bid date must use YYYY-MM-DD format.")
 
-        percent_values = {}
-        for key, label in (("L_PER", "Lead"), ("F_PER", "First partner"), ("S_PER", "Second partner")):
-            raw = str(data.get(key, "")).strip().replace("%", "")
-            if not raw:
-                percent_values[key] = 0.0
-                continue
-            try:
-                value = float(raw)
-            except ValueError:
-                errors.append(f"{label} ownership percentage must be numeric.")
-                continue
-            if not 0 <= value <= 100:
-                errors.append(f"{label} ownership percentage must be between 0 and 100.")
-            percent_values[key] = value
+        if not is_single:
+            percent_values = {}
+            for key, label in (("L_PER", "Lead"), ("F_PER", "First partner"), ("S_PER", "Second partner")):
+                raw = str(data.get(key, "")).strip().replace("%", "")
+                if not raw:
+                    percent_values[key] = 0.0
+                    continue
+                try:
+                    value = float(raw)
+                except ValueError:
+                    errors.append(f"{label} ownership percentage must be numeric.")
+                    continue
+                if not 0 <= value <= 100:
+                    errors.append(f"{label} ownership percentage must be between 0 and 100.")
+                percent_values[key] = value
 
-        if not errors or all(key in percent_values for key in ("L_PER", "F_PER", "S_PER")):
-            total = sum(percent_values.values())
-            if abs(total - 100.0) > 0.01:
-                errors.append(f"Ownership percentages must total 100%; current total is {total:.2f}%.")
+            if not errors or all(key in percent_values for key in ("L_PER", "F_PER", "S_PER")):
+                total = sum(percent_values.values())
+                if abs(total - 100.0) > 0.01:
+                    errors.append(f"Ownership percentages must total 100%; current total is {total:.2f}%.")
 
         lead = bool(str(data.get("LEAD_PARTNER_NAME", "")).strip())
         first = bool(str(data.get("FIRST_PARTNER_NAME", "")).strip())
         second = bool(str(data.get("SECOND_PARTNER_NAME", "")).strip())
         if not lead:
             errors.append("At least the lead partner must be provided.")
-        if second and not first:
-            errors.append("The first partner must be filled before adding a second partner.")
 
-        for role, prefix in (("first", "FIRST"), ("second", "SECOND")):
-            if str(data.get(f"{prefix}_PARTNER_NAME", "")).strip():
-                for suffix, label in (("ADDRESS", "address"), ("PARTNER_CEO", "CEO/authorised person")):
-                    if not str(data.get(f"{prefix}_{suffix}", "")).strip():
-                        errors.append(f"{role.title()} partner {label} is required.")
+        if not is_single:
+            if second and not first:
+                errors.append("The first partner must be filled before adding a second partner.")
+
+            for role, prefix in (("first", "FIRST"), ("second", "SECOND")):
+                if str(data.get(f"{prefix}_PARTNER_NAME", "")).strip():
+                    for suffix, label in (("ADDRESS", "address"), ("PARTNER_CEO", "CEO/authorised person")):
+                        if not str(data.get(f"{prefix}_{suffix}", "")).strip():
+                            errors.append(f"{role.title()} partner {label} is required.")
 
         if "AUTHORISED_SIG" not in self.image_mapping:
             errors.append("An authorised-person signature image is required.")
@@ -1333,8 +1460,14 @@ class App(QMainWindow, PDFViewerMixin, PartnerDocsMixin):
             )
             return
 
+        is_single = data.get("BID_TYPE", "Joint Venture") == "Single Bidder"
+        data["AND_CONNECTOR"] = "" if is_single else "And"
         second_partner_name = data.get("SECOND_PARTNER_NAME", "")
         data["HAS_THIRD_PARTNER"] = "False" if self.generator.is_empty_value(second_partner_name) else "True"
+        if is_single:
+            data["L_PER"] = "100%"
+            data["F_PER"] = ""
+            data["S_PER"] = ""
 
         data["AUTHORIZED_CAPACITY"] = "Authorised person of JV"
 
