@@ -1,69 +1,67 @@
-# JV Bid Pro
+# Bididing Document Workspace
 
-A browser-based application for assembling Joint Venture (JV) bid documents from a Word template. It replaces placeholder text in a `.docx` template with data entered in the form and downloads an editable Word document.
+Bididing is a browser-based Flask application for preparing editable Joint Venture bid documents from Word templates. The application collects project, employer, and partner information, replaces placeholders in the selected `.docx` template, and downloads the completed Word file.
 
-The current web workflow is intentionally streamlined: it produces **Word only**, excludes all signature and stamp assets, and does not convert documents to PDF.
+The product is intentionally streamlined. The web workflow generates **Word documents only**. It does not request, embed, or process signatures or stamps, and it does not convert documents to PDF.
 
-## What it actually does
+## Features
 
-- **Supports 1–3 partners** in a joint venture: Lead, First, and Second partner sections with organisation details, authorised-person names, managing directors, and ownership percentages.
-- **Validates the essentials** before generation, including required project and employer information, partner ordering, and 100% ownership allocation for joint ventures.
-- **Generates editable Word documents** from the checked-in templates with `python-docx` and `lxml`.
-- **Excludes signatures and stamps by design.** The web form has no image-upload controls, and the generator removes all signature/stamp image slots from the output.
-- **Does not convert to PDF.** The web workflow ends at the `.docx` download.
-- **Professional responsive workspace** with a persistent navigation rail, live readiness summary, clear form cards, and mobile-friendly layout.
+The workspace supports single-bidder and joint-venture submissions with one to three partner organisations. It validates required bid information, partner ordering, ownership totals, and unresolved Word-template placeholders before allowing an export. The interface is responsive and includes a live submission-readiness summary.
 
 ## Project structure
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `web_app.py` | Flask web entry point and Word download endpoint |
-| `web_templates/` | Professional responsive browser interface |
-| `web_static/` | Styles and live readiness interactions |
-| `app.py` | Legacy PySide6 desktop shell |
-| `doc_generator.py` | Core placeholder/image replacement logic for the `.docx` template |
-| `profiles.py` | SQLite-backed partner profile storage |
-| `partner_docs.py` | Supporting-document upload/preview per partner |
-| `pdf_viewer.py`, `pdf_utils.py` | Employer PDF rendering/pagination |
-| `sidebar.py`, `top_bar.py`, `summary_panel.py`, `command_palette.py`, `theme.py` | UI shell components and styling |
-| `templates/` | Word bid templates with placeholders |
-| `db/profiles.db` | Local SQLite database of saved partner profiles |
-| `output/` | Generated bid documents land here |
+| `web_app.py` | Flask application and Word download endpoint |
+| `web_templates/` | Responsive HTML interface |
+| `web_static/` | CSS styling and client-side readiness feedback |
+| `doc_generator.py` | Word placeholder replacement and template cleanup |
+| `templates/` | Required Word templates |
+| `tests/` | Unit tests for the document generator |
+| `test_web_generation.py` | End-to-end Word download smoke test |
+| `check_web_app.py` | Basic import and template inspection check |
+| `requirements.txt` | Python dependencies |
 
 ## Requirements
 
-- Python 3.9+
-- `PySide6`
-- `python-docx`
-- `lxml`
-- `Flask` for the browser interface
-- `PySide6` and `PyMuPDF` remain available only for the legacy desktop shell
-
-Install the dependencies from the checked-in requirements file:
+Python 3.9 or newer is required. Install the dependencies with:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## Running the web app
+## Run locally
 
-Install dependencies and start the browser-based workflow:
+From the `Bidding-App-main` directory:
 
 ```bash
-python -m pip install -r requirements.txt
 python web_app.py
 ```
 
-Then open `http://127.0.0.1:5000` in a browser. The legacy PySide6 desktop shell remains available with `python app.py`, but the recommended interface is the professional web workspace.
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000) in a browser. The generated files are written to the local `output/` directory.
 
-The web application resolves templates and generated output relative to the application directory. Before generating a document, it validates required fields, partner ordering, ownership percentages, and unresolved template placeholders. It never asks for or embeds signature/stamp images, and it does not create a PDF.
+For a production deployment, run the Flask `app` object with a production WSGI server such as Waitress or Gunicorn rather than using the development server built into Flask.
 
-## Testing
+## Test
+
+Run the unit tests:
 
 ```bash
 pytest -q tests
 ```
 
-## Note
+Run the web generation smoke test:
 
-`pdf_utils.py` is a reconstructed stand-in (see the note in the file) — swap in your original if you have one; it should be a drop-in match based on how it's used elsewhere in the app.
+```bash
+python test_web_generation.py
+```
+
+The smoke test submits a valid form, confirms that the response is an editable `.docx`, and verifies that signature and stamp references are absent from the generated Word package.
+
+## Word templates
+
+The three templates in `templates/` are required by the generator. Keep their filenames and placeholder names compatible with `doc_generator.py` when modifying them. The generator selects the one-, two-, or three-partner template based on the submitted partner information.
+
+## Developer handoff
+
+Clone the repository, enter `Bidding-App-main`, install the dependencies, and run `python web_app.py`. The repository is self-contained for local development and does not require API keys or external services for the current Word-only workflow.
