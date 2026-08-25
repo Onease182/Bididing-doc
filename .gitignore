@@ -4,3 +4,4 @@ Bidding-App-main/output/
 Bidding-App-main/assets/
 Bidding-App-main/*.log
 Bidding-App-main/db/*.db
+Bidding-App-main/data/*.db

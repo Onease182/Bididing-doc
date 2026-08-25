@@ -1,10 +1,12 @@
 from pathlib import Path
-from flask import Flask, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file
 from doc_generator import BidDocumentGenerator
+from web_profiles import PROFILE_FIELDS, create_profile, delete_profile, get_profile, init_db, list_profiles
 
 BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__, template_folder="web_templates", static_folder="web_static")
 generator = BidDocumentGenerator(BASE_DIR)
+init_db()
 
 TEXT_FIELDS = [
     "BID_TYPE", "PROJECT_NAME", "BID_DATE", "EMPLOYER_NAME", "EMPLOYER_ADDRESS", "IFB_NUMBER", "BID_VALIDITY_PERIOD", "JV_NAME", "JV_ADDRESS",
@@ -64,7 +66,37 @@ def validate(data):
 
 @app.get("/")
 def index():
-    return render_template("web_index.html", data=DEFAULTS, errors=[], generated=False)
+    return render_template("web_index.html", data=DEFAULTS, errors=[], generated=False, profiles=list_profiles())
+
+
+@app.get("/api/profiles")
+def profiles_index():
+    return jsonify(list_profiles())
+
+
+@app.get("/api/profiles/<profile_id>")
+def profile_detail(profile_id):
+    profile = get_profile(profile_id)
+    if not profile:
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify(profile)
+
+
+@app.post("/api/profiles")
+def profile_create():
+    payload = request.get_json(silent=True) or {}
+    try:
+        profile = create_profile(payload.get("name"), payload.get("role"), payload.get("values", {}))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(profile), 201
+
+
+@app.delete("/api/profiles/<profile_id>")
+def profile_remove(profile_id):
+    if not delete_profile(profile_id):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": True})
 
 
 @app.post("/generate")
@@ -72,11 +104,11 @@ def generate_word():
     data = collect_data(request.form)
     errors = validate(data)
     if errors:
-        return render_template("web_index.html", data=data, errors=errors, generated=False), 400
+        return render_template("web_index.html", data=data, errors=errors, generated=False, profiles=list_profiles()), 400
     try:
         output_path = generator.generate(data, image_mapping={})
     except Exception as exc:
-        return render_template("web_index.html", data=data, errors=[str(exc)], generated=False), 400
+        return render_template("web_index.html", data=data, errors=[str(exc)], generated=False, profiles=list_profiles()), 400
     return send_file(output_path, as_attachment=True, download_name=output_path.name, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 

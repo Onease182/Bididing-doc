@@ -75,3 +75,23 @@ second_response = client.post("/generate", data={
 assert second_response.status_code == 200, second_response.data.decode("utf-8", errors="ignore")[:1000]
 assert second_response.mimetype == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 print("Two-partner Word generation: ok; AND_CONNECTOR resolved")
+
+profile_response = client.post('/api/profiles', json={
+    'name': 'Apex Saved Profile',
+    'role': 'lead',
+    'values': {
+        'partner_name': 'Apex Civil Engineering Ltd',
+        'partner_short': 'Apex',
+        'address': '12 Market Street',
+        'partner_ceo': 'Jordan Lee',
+        'partner_md1': '',
+        'partner_md2': '',
+    },
+})
+assert profile_response.status_code == 201
+profile = profile_response.get_json()
+assert profile['partner_short'] == 'Apex'
+assert client.get(f"/api/profiles/{profile['id']}").get_json()['address'] == '12 Market Street'
+assert any(item['id'] == profile['id'] for item in client.get('/api/profiles').get_json())
+assert client.delete(f"/api/profiles/{profile['id']}").status_code == 200
+print('Profile API: ok; create, load, list, and delete verified')

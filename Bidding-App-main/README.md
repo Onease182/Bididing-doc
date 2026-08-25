@@ -8,6 +8,8 @@ The product is intentionally streamlined. The web workflow generates **Word docu
 
 The workspace supports single-bidder and joint-venture submissions with one to three partner organisations. It validates required bid information, partner ordering, ownership totals, and unresolved Word-template placeholders before allowing an export. The interface is responsive and includes a live submission-readiness summary.
 
+Partner details can be saved as reusable profiles in the local SQLite database under `data/profiles.db`. Saved profiles can be loaded into any partner slot. When partner short names or addresses are entered or loaded, the application automatically suggests the JV name and JV address; users can still override those suggestions manually.
+
 ## Project structure
 
 | Path | Purpose |
@@ -16,6 +18,7 @@ The workspace supports single-bidder and joint-venture submissions with one to t
 | `web_templates/` | Responsive HTML interface |
 | `web_static/` | CSS styling and client-side readiness feedback |
 | `doc_generator.py` | Word placeholder replacement and template cleanup |
+| `web_profiles.py` | Local SQLite profile storage and CRUD helpers |
 | `templates/` | Required Word templates |
 | `tests/` | Unit tests for the document generator |
 | `test_web_generation.py` | End-to-end Word download smoke test |
@@ -64,4 +67,4 @@ The three templates in `templates/` are required by the generator. Keep their fi
 
 ## Developer handoff
 
-Clone the repository, enter `Bidding-App-main`, install the dependencies, and run `python web_app.py`. The repository is self-contained for local development and does not require API keys or external services for the current Word-only workflow.
+Clone the repository, enter `Bidding-App-main`, install the dependencies, and run `python web_app.py`. The repository is self-contained for local development and does not require API keys or external services for the current Word-only workflow. Profile data is stored locally and is ignored by Git.
