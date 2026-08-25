@@ -1,7 +1,7 @@
 from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 from doc_generator import BidDocumentGenerator
-from web_profiles import create_profile, delete_profile, find_profile_by_identifier, get_profile, init_db, list_profiles
+from web_profiles import PROFILE_FIELDS, create_profile, delete_profile, get_profile, init_db, list_profiles
 
 BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__, template_folder="web_templates", static_folder="web_static")
@@ -74,14 +74,6 @@ def profiles_index():
     return jsonify(list_profiles())
 
 
-@app.get("/api/profiles/lookup/<identifier>")
-def profile_lookup(identifier):
-    profile = find_profile_by_identifier(identifier)
-    if not profile:
-        return jsonify({"error": "No profile found for that identifier."}), 404
-    return jsonify(profile)
-
-
 @app.get("/api/profiles/<profile_id>")
 def profile_detail(profile_id):
     profile = get_profile(profile_id)
@@ -94,10 +86,7 @@ def profile_detail(profile_id):
 def profile_create():
     payload = request.get_json(silent=True) or {}
     try:
-        profile = create_profile(
-            payload.get("name"), payload.get("role"), payload.get("identifier"),
-            payload.get("identifier_type", "direct"), payload.get("values", {}),
-        )
+        profile = create_profile(payload.get("name"), payload.get("role"), payload.get("values", {}))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(profile), 201

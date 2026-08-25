@@ -22,32 +22,6 @@
       <header class="topbar"><div><p class="eyebrow">DOCUMENT BUILDER / NEW BID</p><h1>Prepare your bid document</h1></div><div class="topbar-note"><span class="status-dot"></span><span>Word export enabled</span></div></header>
       <div class="content-grid">
         <section class="form-column">
-          <section class="onboarding-card" id="profile-onboarding">
-            <div class="onboarding-kicker"><span class="section-number">00</span><span class="eyebrow">START HERE / PARTNER PROFILE</span></div>
-            <h2>Create your partner profile</h2>
-            <p class="onboarding-intro">Your saved profile supplies the partner short name, address, and organisation details used throughout the bid. Create one with a Gmail address or choose a direct profile ID.</p>
-            <div class="profile-lookup-row">
-              <div class="field"><label for="profile-lookup">Find an existing profile</label><div class="lookup-group"><input id="profile-lookup" placeholder="Gmail address or direct profile ID"><button type="button" class="secondary-button" id="lookup-profile">Find profile</button></div></div>
-              <div class="field"><label for="existing-profile">Or select a saved profile</label><select id="existing-profile"><option value="">Choose a profile to load</option>{% for profile in profiles %}<option value="{{ profile.id }}">{{ profile.name }} · {{ profile.partner_short }}</option>{% endfor %}</select></div>
-            </div>
-            <div class="onboarding-divider"><span>New profile</span></div>
-            <div class="profile-identity-grid">
-              <div class="field"><label for="new-profile-name">Profile name <em>Required</em></label><input id="new-profile-name" placeholder="e.g. Apex Civil Engineering"></div>
-              <div class="field"><label for="profile-identifier-type">Profile ID type</label><select id="profile-identifier-type"><option value="gmail">Gmail address</option><option value="direct">Direct profile ID</option></select></div>
-              <div class="field"><label for="profile-identifier">Gmail or direct ID <em>Required</em></label><input id="profile-identifier" placeholder="name@gmail.com or your own ID"></div>
-              <div class="field"><label for="profile-borg-number">Borg number <em>Required</em></label><input id="profile-borg-number" placeholder="Enter Borg number"></div>
-            </div>
-            <div class="profile-details-grid">
-              <div class="field"><label for="profile-partner-name">Legal organisation name <em>Required</em></label><input id="profile-partner-name" placeholder="Registered organisation name"></div>
-              <div class="field"><label for="profile-partner-short">Partner short name <em>Required</em></label><input id="profile-partner-short" placeholder="Used to suggest the JV name"></div>
-              <div class="field full"><label for="profile-address">Organisation address <em>Required</em></label><input id="profile-address" placeholder="Registered business address"></div>
-              <div class="field"><label for="profile-ceo">Authorised person</label><input id="profile-ceo" placeholder="Name and title"></div>
-              <div class="field"><label for="profile-md1">Managing director</label><input id="profile-md1" placeholder="Optional"></div>
-              <div class="field"><label for="profile-md2">Second director</label><input id="profile-md2" placeholder="Optional"></div>
-            </div>
-            <div class="onboarding-actions"><span id="profile-status">No profile selected</span><div><button type="button" class="secondary-button" id="create-profile">Create and use profile</button><button type="button" class="primary-button" id="continue-project" disabled>Continue to project details <span class="button-arrow">→</span></button></div></div>
-          </section>
-          <div id="project-workspace">
           {% if errors %}<div class="alert"><strong>We need a few corrections.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
           <form method="post" action="{{ url_for('generate_word') }}" id="bid-form">
             <div class="section-heading"><div class="section-number">01</div><div><h2>Bid overview</h2><p>Start with the information that identifies this submission.</p></div></div>
@@ -84,7 +58,6 @@
             <div class="section-heading"><div class="section-number">03</div><div><h2>Export</h2><p>Generate the editable Word file when your details are ready.</p></div></div>
             <div class="card export-card"><div class="export-icon">W</div><div class="export-copy"><h3>Unsigned Word document</h3><p>Your document is generated directly from the selected bid template. Signature images, stamps, and PDF conversion are intentionally excluded.</p></div><button type="submit" class="primary-button"><span>Generate Word document</span><span class="button-arrow">→</span></button></div>
           </form>
-          </div>
         </section>
         <aside class="summary-column"><div class="summary-sticky"><div class="summary-card"><div class="summary-top"><span class="eyebrow">LIVE SUMMARY</span><span class="live-badge"><span class="status-dot"></span>Live</span></div><h2>Submission readiness</h2><p class="summary-description">Complete the form to prepare a clean, editable Word deliverable.</p><div class="readiness-bar"><div class="readiness-fill" id="readiness-fill"></div></div><div class="readiness-meta"><span id="readiness-label">Getting started</span><strong id="readiness-percent">0%</strong></div><div class="summary-list"><div><span class="summary-check" id="check-project">○</span><span>Bid overview</span></div><div><span class="summary-check" id="check-employer">○</span><span>Employer details</span></div><div><span class="summary-check" id="check-lead">○</span><span>Lead partner</span></div><div><span class="summary-check" id="check-ownership">○</span><span>Ownership allocation</span></div></div></div><div class="info-card"><span class="info-icon">i</span><div><strong>Designed for editing</strong><p>The exported .docx stays editable so your team can make final internal updates in Microsoft Word.</p></div></div></div></aside>
       </div>

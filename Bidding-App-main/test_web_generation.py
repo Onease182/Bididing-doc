@@ -79,10 +79,7 @@ print("Two-partner Word generation: ok; AND_CONNECTOR resolved")
 profile_response = client.post('/api/profiles', json={
     'name': 'Apex Saved Profile',
     'role': 'lead',
-    'identifier': 'apex.test@gmail.com',
-    'identifier_type': 'gmail',
     'values': {
-        'borg_number': 'BORG-001',
         'partner_name': 'Apex Civil Engineering Ltd',
         'partner_short': 'Apex',
         'address': '12 Market Street',
